@@ -6,8 +6,8 @@
 > <small>Delete your existing folder and re-download: `git clone https://github.com/SiliconStreetDev1/ContextBuilder.git`</small>
 >
 > <small>**Option 2: The Terminal Way**</small><br>
-> <small>Inside your project directory, run: `git fetch origin` followed by `git reset --hard origin/main`</small>
-> <small>💡 **Important Setup Change:** Token storage is now strictly managed via `.env` variables for better security. Please review the **Credential Management & Responsibility** section below to configure your new setup.</small>
+> <small>Inside your project directory, run: `git fetch origin` followed by `git reset --hard origin/main`</small><br><br>
+> <small>💡 **Important Setup Change:** Token storage is now strictly managed via `.env` variables. Please review the **Credential Management & Responsibility** section below to configure your new setup.</small>
 
 
 # SAP Context Builder For LLM
