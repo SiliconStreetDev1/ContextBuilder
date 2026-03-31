@@ -1,8 +1,27 @@
+> <small>⚠️ **Notice for Existing Users (March 2026 Update)**
+> 
+> <small>To improve maintainability, the underlying Git history of this repository was recently streamlined. If you downloaded ContextBuilder before **March 31, 2026**, a standard `git pull` will fail. Please use one of the two methods below to sync to the latest version.</small>
+>
+> <small>**Option 1: The Easy Way (Recommended)**</small><br>
+> <small>Delete your existing folder and re-download: `git clone https://github.com/SiliconStreetDev1/ContextBuilder.git`</small>
+>
+> <small>**Option 2: The Terminal Way**</small><br>
+> <small>Inside your project directory, run: `git fetch origin` followed by `git reset --hard origin/main`</small>
+
+
 # SAP Context Builder For LLM
 
 A desktop only (Not for server usage)  tool for SAP teams that assembles multiple ABAP, UI5 and utility repositories into clean XML bundles and chunked context packs for web‑ and IDE‑based LLMs. It gives Gemini, ChatGPT, and Claude a unified, cross‑repo view of your entire landscape so they can generate precise, standard‑compliant ABAP, UI5, and other code with full architectural awareness.
 
 > ⚠️ The generated Chunks and XML files contain the actual source code extracted from your configured repositories.
+
+
+---
+
+A desktop only (Not for server usage)  tool for SAP teams that assembles multiple ABAP, UI5 and utility repositories into clean XML bundles and chunked context packs for web‑ and IDE‑based LLMs. It gives Gemini, ChatGPT, and Claude a unified, cross‑repo view of your entire landscape so they can generate precise, standard‑compliant ABAP, UI5, and other code with full architectural awareness.
+
+> ⚠️ The generated Chunks and XML files contain the actual source code extracted from your configured repositories.
+
 
 ---
 
