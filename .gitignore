@@ -8,7 +8,7 @@ ui5-mock.yaml
 
 
 
-# --- Silicon Street UI5 Pattern ---
+# --- UI5 Pattern ---
 .chrome-profile/
 node_modules/
 dist/

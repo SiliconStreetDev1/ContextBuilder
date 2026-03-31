@@ -1,51 +1,38 @@
 /**
  * ContextStudioController
- * Enterprise Logic for SAP Context Orchestration
+ * Main Orchestrator for the SAP Context Builder Frontend.
+ * Handles UI state, profile persistence (LocalStorage), session security (SessionStorage),
+ * and communication with the Node.js backend.
  */
 class ContextStudioController {
     constructor() {
-        // State management for compiled context chunks
-        this.currentMemoryChunks = [];
-        this.config = null;
+        // --- State Management ---
+        this.currentMemoryChunks = []; // Stores the compiled XML chunks returned from the server
+        this.config = null;            // Holds global configuration (ignore lists, extensions)
+        this.defaultPrompt = "";       // Stores the system instruction template
+
+        // --- Persistence & Session ---
+        // Retrieve the volatile token if one was set in this browser session
+        this.sessionToken = sessionStorage.getItem('sap-volatile-token') || null;
         
-        // Retrieve the last active profile from local storage, fallback to Default
+        // Retrieve the last used profile name or default to "Default Profile"
         this.activeProfileName = localStorage.getItem('sap-active-profile') || "Default Profile";
         
-        // The master system prompt containing strict coding standards
-        this.defaultPrompt = `=== SYSTEM INSTRUCTIONS ===
-Acknowledge receipt of the following context by responding only with 'ACK_READY'. Do not provide analysis, summaries, or feedback until explicitly requested.
-You are strictly forbidden from outputting any text other than the Handshake Code: ACK_READY
-
-You are an Expert SAP Architect and Master ABAP Developer.
-I am providing you with the full context of my current project.
-
-=== INGESTION GUARDRAIL (STRICT PROTOCOL) ===
-CONDITION: If any incoming message contains headers like "--- FILE: " or "CHUNK [number] of [total]".
-MANDATORY ACTION: 
-  1. SILENTLY STORE the provided content in your internal session memory.
-  2. TERMINATE all generative processes. Do not analyze, greet, or offer architectural feedback.
-
-CODING STANDARDS:
-1. NO TRUNCATION: Output the full, complete file every time. Always comment code when generating and make it as modular, human-readable, and maintainable as possible.
-2. CLEAN ABAP: No Hungarian notation (No LV_, LT_, LS_). Use intention-revealing names.
-3. OO SYNTAX MANDATE: Strictly adhere to multi-line global class definitions.
-===========================`;
-
-        // Load saved profiles from LocalStorage or initialize as empty.
+        // Load saved profiles from LocalStorage
         const savedProfiles = localStorage.getItem('sap-context-builder-profiles');
         this.variants = savedProfiles ? JSON.parse(savedProfiles) : {};
 
-        // Bootstrap the application and inject the toast container
-        this.initToastContainer();
-        this.init();
+        // --- Initialization ---
+        this.initToastContainer(); // Setup the notification UI
+        this.init();               // Run async startup sequence
     }
 
     /**
-     * Initializes the dynamic Toast Notification container for enterprise feedback.
+     * Creates a fixed container in the DOM to host toast notifications.
      */
     initToastContainer() {
         this.toastContainer = document.createElement('div');
-        this.toastContainer.id = 'enterprise-toast-container';
+        this.toastContainer.id = 'toast-container';
         Object.assign(this.toastContainer.style, {
             position: 'fixed',
             bottom: '20px',
@@ -59,14 +46,14 @@ CODING STANDARDS:
     }
 
     /**
-     * Displays a transient toast message to the user.
-     * @param {string} message - The message to display.
-     * @param {string} type - 'success', 'error', or 'info'.
+     * Displays a temporary notification message to the user.
+     * @param {string} message - The text to display.
+     * @param {string} type - 'info', 'success', or 'error'.
      */
     showToast(message, type = 'info') {
         const toast = document.createElement('div');
         
-        // Base styling for the toast
+        // Base styling for the toast element
         Object.assign(toast.style, {
             minWidth: '250px',
             padding: '12px 20px',
@@ -83,7 +70,7 @@ CODING STANDARDS:
             justifyContent: 'space-between'
         });
 
-        // Apply specific colors based on the feedback type
+        // Color coding based on message type
         if (type === 'success') toast.style.backgroundColor = '#2e7d32'; 
         else if (type === 'error') toast.style.backgroundColor = '#d32f2f'; 
         else toast.style.backgroundColor = '#1976d2'; 
@@ -91,13 +78,13 @@ CODING STANDARDS:
         toast.innerText = message;
         this.toastContainer.appendChild(toast);
 
-        // Animate in
+        // Trigger entrance animation
         requestAnimationFrame(() => {
             toast.style.opacity = '1';
             toast.style.transform = 'translateY(0)';
         });
 
-        // Animate out and remove after 3 seconds
+        // Exit and cleanup after 3 seconds
         setTimeout(() => {
             toast.style.opacity = '0';
             toast.style.transform = 'translateY(10px)';
@@ -106,58 +93,55 @@ CODING STANDARDS:
     }
 
     /**
-     * Encrypts and saves the GitHub PAT to the secure AES-256 local vault.
-     * Triggered by the "Save to Secure Local Vault" button.
+     * Captures the PAT from the UI and stores it in SessionStorage.
+     * This token is NOT persisted to disk and dies when the tab is closed.
      */
-    async saveSecureToken() {
+    setSessionToken() {
         const tokenInput = document.getElementById('globalPatInput');
-        
         if (!tokenInput || !tokenInput.value.trim()) {
-            this.showToast("Action denied: Please enter a valid token first.", "error");
+            this.showToast("Please enter a valid token first.", "error");
             return;
         }
 
-        const tokenValue = tokenInput.value.trim();
-        this.showToast("Initiating secure encryption...", "info");
+        this.sessionToken = tokenInput.value.trim();
+        sessionStorage.setItem('sap-volatile-token', this.sessionToken);
+        
+        tokenInput.value = ''; // Clear input for security
+        document.getElementById('sessionTokenStatus').style.display = 'block'; // Show "active" indicator
+        
+        this.showToast("Session token active.", "success");
+    }
 
+    /**
+     * Fetches the default AI prompt template from the server.
+     */
+    async fetchDefaultPrompt() {
         try {
-            const res = await fetch('/api/credentials', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token: tokenValue })
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                throw new Error(data.error || "Failed to communicate with Security Manager");
+            const res = await fetch('/api/prompt');
+            if (res.ok) {
+                this.defaultPrompt = await res.text();
+            } else {
+                this.defaultPrompt = "";
             }
-
-            // Success feedback
-            this.showToast("Success: Token encrypted and locked in vault.", "success");
-            
-            // Security Best Practice: Wipe the UI input after encryption
-            tokenInput.value = '';
-
-        } catch (error) {
-            console.error("[Security Error]", error);
-            this.showToast(`Vault Error: ${error.message}`, "error");
+        } catch (e) {
+            this.defaultPrompt = "";
         }
     }
 
     /**
-     * Bootstraps the UI, fetches config, hydrates defaults, and loads the active profile.
+     * Main startup sequence. Orchestrates fetching remote data and setting up the UI.
      */
     async init() {
-        this.showToast("Initializing Workspace...", "info");
+        this.showToast("Initializing...", "info");
         
-        // 1. Fetch backend config first
+        await this.fetchDefaultPrompt();
         await this.fetchConfig(); 
         
-        // 2. If no saved profiles exist, construct the "Default Profile" using live config rules
+        // If no profiles exist, create the initial Default Profile
         if (Object.keys(this.variants).length === 0) {
             const defaultExtensions = [];
             
+            // Extract default file extensions from the config JSON
             if (this.config && this.config.uiExtensionGroups) {
                 this.config.uiExtensionGroups.forEach(group => {
                     group.items.forEach(item => {
@@ -175,16 +159,22 @@ CODING STANDARDS:
             };
         }
         
+        // Safety check for active profile existence
         if (!this.variants[this.activeProfileName]) {
             this.activeProfileName = Object.keys(this.variants)[0] || "Default Profile";
         }
         
-        this.refreshVariantList();
-        this.loadVariant();
+        this.refreshVariantList(); // Sync dropdown with profile keys
+        this.loadVariant();        // Populate UI with active profile data
+
+        // Show session indicator if a token already exists in SessionStorage
+        if (this.sessionToken) {
+            document.getElementById('sessionTokenStatus').style.display = 'block';
+        }
     }
 
     /**
-     * Fetches the server-side config.json to populate UI extension checkboxes.
+     * Fetches global configuration and dynamically builds the Extension UI grid.
      */
     async fetchConfig() {
         try {
@@ -194,6 +184,7 @@ CODING STANDARDS:
             const extContainer = document.getElementById('extGroup');
             if (extContainer) {
                 extContainer.innerHTML = ''; 
+                // Iterate through config groups (ABAP, Web, Core, etc.)
                 this.config.uiExtensionGroups.forEach(group => {
                     const header = document.createElement('h4');
                     header.innerText = group.groupName;
@@ -206,15 +197,15 @@ CODING STANDARDS:
                     });
                 });
             }
-
-
         } catch (e) {
-            this.showToast("Failed to load configuration from server.", "error");
+            this.showToast("Failed to load configuration.", "error");
         }
     }
 
     /**
-     * Appends a new repository/source input row to the UI.
+     * Dynamically adds a new source row (Local path or GitHub URL) to the UI.
+     * @param {string} sourceType - 'local' or 'github'.
+     * @param {string} sourcePath - The file path or repo URL.
      */
     addSourceRow(sourceType, sourcePath) {
         const container = document.getElementById('sourcesContainer');
@@ -235,6 +226,7 @@ CODING STANDARDS:
             <button class="danger" onclick="this.closest('.source-row').remove(); App.checkGitHubUI();">X</button>
         `;
 
+        // Update row metadata and check UI visibility on type change
         rowDiv.querySelector('.src-type').addEventListener('change', (e) => {
             rowDiv.dataset.type = e.target.value;
             this.checkGitHubUI();
@@ -245,7 +237,7 @@ CODING STANDARDS:
     }
 
     /**
-     * Toggles the visibility of the GitHub PAT input section based on active sources.
+     * Shows/Hides the GitHub Authentication section based on whether GitHub sources are present.
      */
     checkGitHubUI() {
         const authSection = document.getElementById('githubAuthSection');
@@ -256,26 +248,28 @@ CODING STANDARDS:
     }
 
     /**
-     * Gathers all UI parameters and sends them to the Node backend for context compilation.
+     * Gathers all UI state and sends it to the backend to compile the context XML.
      */
     async compileContext() {
+        // Collect and filter valid sources
         const sources = Array.from(document.querySelectorAll('.source-row')).map(row => ({
             type: row.dataset.type, 
             path: row.querySelector('.primary-input').value
         })).filter(src => src.path.trim() !== "");
         
         if (!sources.length) {
-            this.showToast("Please add at least one source before packing.", "error");
+            this.showToast("Please add at least one source.", "error");
             return;
         }
         
+        // Collect checked extensions
         const extensions = Array.from(document.querySelectorAll('#extGroup input:checked'))
             .flatMap(el => el.value.split(','));
 
         const packBtn = document.getElementById('packBtn');
-        if (packBtn) packBtn.disabled = true;
+        if (packBtn) packBtn.disabled = true; // Prevent double submission
         
-        this.showToast("Compiling context payload...", "info");
+        this.showToast("Compiling context...", "info");
 
         try {
             const aiPromptElement = document.getElementById('aiPrompt');
@@ -285,21 +279,19 @@ CODING STANDARDS:
                 body: JSON.stringify({ 
                     sources, 
                     extensions, 
-                    aiPrompt: aiPromptElement ? aiPromptElement.value : '' 
+                    aiPrompt: aiPromptElement ? aiPromptElement.value : '',
+                    sessionToken: this.sessionToken 
                 })
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Compilation failed");
 
+            // Update state with chunks and refresh UI
             this.currentMemoryChunks = data.chunks;
             this.renderChunksToUI();
             
-            this.showToast("Context successfully compiled!", "success");
+            this.showToast("Context successfully compiled.", "success");
             
-            const autoFeedBtn = document.getElementById('autoFeedBtn');
-            if (this.config && this.config.enableAutoFeed && autoFeedBtn) {
-                autoFeedBtn.style.display = "block";
-            }
         } catch (error) { 
             this.showToast(`Error: ${error.message}`, "error"); 
         } finally { 
@@ -308,7 +300,7 @@ CODING STANDARDS:
     }
 
     /**
-     * Renders compiled XML chunks as cards in the UI for easy manual copying.
+     * Renders the compiled chunks as interactive cards in the UI.
      */
     renderChunksToUI() {
         const container = document.getElementById('chunks-display');
@@ -330,7 +322,9 @@ CODING STANDARDS:
     }
 
     /**
-     * Copies a specific chunk to the user's OS clipboard and provides button feedback.
+     * Copies a specific chunk's content to the system clipboard.
+     * @param {HTMLElement} btn - The button element clicked.
+     * @param {number} idx - Index of the chunk in the state array.
      */
     copyChunk(btn, idx) { 
         navigator.clipboard.writeText(this.currentMemoryChunks[idx])
@@ -340,11 +334,11 @@ CODING STANDARDS:
                 this.showToast(`Chunk ${idx + 1} copied to clipboard`, "success");
                 setTimeout(() => btn.innerText = orig, 2000); 
             })
-            .catch(() => this.showToast("Failed to copy to clipboard", "error"));
+            .catch(() => this.showToast("Failed to copy", "error"));
     }
 
     /**
-     * Repopulates the profile dropdown menu.
+     * Rebuilds the Profile selection dropdown.
      */
     refreshVariantList() {
         const select = document.getElementById('variantSelect');
@@ -356,7 +350,7 @@ CODING STANDARDS:
     }
 
     /**
-     * Loads the selected profile's settings into the active UI fields.
+     * Loads the data from a selected profile into the UI inputs.
      */
     loadVariant() { 
         const select = document.getElementById('variantSelect');
@@ -369,15 +363,20 @@ CODING STANDARDS:
         this.activeProfileName = selected;
         localStorage.setItem('sap-active-profile', selected);
         
+        // Repopulate Sources
         const sourcesContainer = document.getElementById('sourcesContainer');
         if (sourcesContainer) {
             sourcesContainer.innerHTML = ''; 
             data.sources.forEach(src => this.addSourceRow(src.type, src.path)); 
         }
         
+        // Repopulate Prompt
         const aiPrompt = document.getElementById('aiPrompt');
-        if (aiPrompt) aiPrompt.value = data.prompt || ''; 
+        if (aiPrompt) {
+            aiPrompt.value = data.prompt || this.defaultPrompt || ''; 
+        }
         
+        // Update Extension Checkboxes
         const checks = document.querySelectorAll('#extGroup input');
         checks.forEach(chk => {
             chk.checked = data.extensions.some(e => chk.value.includes(e));
@@ -385,16 +384,16 @@ CODING STANDARDS:
     }
 
     /**
-     * Updates the currently active profile with the current UI settings.
+     * Saves the current UI state to the currently active profile.
      */
     saveVariant() { 
         const name = this.activeProfileName;
         this._persistProfile(name);
-        this.showToast(`Profile "${name}" saved successfully.`, "success");
+        this.showToast(`Profile "${name}" saved.`, "success");
     }
 
     /**
-     * Creates a new profile with the current UI settings.
+     * Creates a new profile based on current UI state.
      */
     saveAsVariant() {
         const name = prompt("Enter new profile name:");
@@ -409,37 +408,40 @@ CODING STANDARDS:
         localStorage.setItem('sap-active-profile', this.activeProfileName);
         
         this.refreshVariantList();
-        this.showToast(`New profile "${cleanName}" created and saved.`, "success");
+        this.showToast(`New profile "${cleanName}" saved.`, "success");
     }
 
     /**
-     * Deletes the currently active profile (preventing deletion of the Default).
+     * Deletes the currently active profile.
      */
     deleteVariant() {
         const name = this.activeProfileName;
 
+        // Protection for the mandatory Default Profile
         if (name === "Default Profile") {
-            this.showToast("Action denied: The Default Profile cannot be deleted.", "error");
+            this.showToast("The Default Profile cannot be deleted.", "error");
             return;
         }
 
-        if (!confirm(`Are you sure you want to permanently delete the profile "${name}"?`)) {
+        if (!confirm(`Delete profile "${name}"?`)) {
             return;
         }
 
         delete this.variants[name];
         localStorage.setItem('sap-context-builder-profiles', JSON.stringify(this.variants));
 
+        // Fall back to Default Profile
         this.activeProfileName = "Default Profile";
         localStorage.setItem('sap-active-profile', this.activeProfileName);
 
         this.refreshVariantList();
         this.loadVariant();
-        this.showToast(`Profile "${name}" was successfully deleted.`, "success");
+        this.showToast(`Profile deleted.`, "success");
     }
 
     /**
-     * Internal helper to serialize UI state into the variants object.
+     * Internal helper to serialize UI state and save it to LocalStorage.
+     * @param {string} name - The name of the profile to save.
      */
     _persistProfile(name) {
         const aiPrompt = document.getElementById('aiPrompt');
@@ -454,17 +456,16 @@ CODING STANDARDS:
         localStorage.setItem('sap-context-builder-profiles', JSON.stringify(this.variants)); 
     }
 
-
-
     /**
-     * Downloads the entire generated XML payload as a file.
+     * Aggregates all chunks and triggers a file download of the full XML.
      */
     downloadAll() {
         if (!this.currentMemoryChunks || this.currentMemoryChunks.length === 0) {
-            this.showToast("Nothing to download. Please pack the context first.", "error");
+            this.showToast("Nothing to download.", "error");
             return;
         }
         
+        // Wrap chunks in XML root tags
         const payload = '<?xml version="1.0" encoding="UTF-8"?>\n<sap_context_dump>\n' + this.currentMemoryChunks.join('\n') + '\n</sap_context_dump>';
         const blob = new Blob([payload], { type: 'application/xml' });
         const link = document.createElement('a');
@@ -476,5 +477,5 @@ CODING STANDARDS:
     }
 }
 
-// Global Export for UI Event Listeners
+// Global entry point
 window.App = new ContextStudioController();

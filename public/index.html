@@ -57,28 +57,14 @@
         .chunk-header { padding: 12px 20px; background: #21262d; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
         .chunk-title { font-size: 13px; font-weight: bold; color: var(--text-accent); }
         .chunk-body { padding: 15px; font-family: monospace; font-size: 12px; color: #ce9178; background: var(--bg-dark); white-space: pre-wrap; max-height: 150px; overflow: hidden; position: relative;}
-        
-        /* Modal Warning */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(13, 17, 23, 0.95); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
-        .modal-box { background: var(--bg-panel); border: 2px solid var(--danger); border-radius: 8px; padding: 40px; max-width: 550px; text-align: center; }
-        .modal-title { color: var(--danger); font-size: 22px; font-weight: bold; text-transform: uppercase; margin-top: 0; }
-        .modal-btn { background: var(--danger); color: white; border: none; padding: 14px 28px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; }
     </style>
 </head>
 <body>
 
-    <div id="botWarningModal" class="modal-overlay">
-        <div class="modal-box">
-            <h2 class="modal-title">⚠️ Bot Automation Enabled ⚠️</h2>
-            <p>Running automated scripts against platforms like Google Gemini violates their Terms of Service. <strong>YOU RISK A PERMANENT BAN.</strong></p>
-            <button class="modal-btn" onclick="document.getElementById('botWarningModal').style.display='none'">I ACCEPT THE RISKS — PROCEED</button>
-        </div>
-    </div>
-
     <div id="config-panel">
         <div class="scroll-area">
             <h1>SAP Context Builder</h1>
-            <span class="subtitle">Secure Context Orchestration Engine</span>
+            <span class="subtitle">Context Orchestration Engine</span>
 
             <label>Profile Manager</label>
             <div style="display:flex; gap:8px; margin-bottom:20px;">
@@ -92,17 +78,24 @@
             <div id="sourcesContainer"></div>
             <button class="secondary" style="margin-bottom:10px; font-size:11px;" onclick="App.addSourceRow('local', '')">+ ADD REPOSITORY</button>
 
-       <div id="githubAuthSection" class="pat-ui">
-    <label style="color:#fff;">GitHub Authentication</label>
-    <input type="password" id="globalPatInput" placeholder="Enter PAT to encrypt and save locally...">
-    <button class="secondary" style="border-color:var(--success); color:var(--success);" onclick="App.saveSecureToken()">Save to Secure Local Vault</button>
-</div>
+            <div id="githubAuthSection" class="pat-ui">
+                <label style="color:#fff;">GitHub Authentication</label>
+                <input type="password" id="globalPatInput" placeholder="Enter session PAT (or leave blank to use .env)">
+                
+                <div style="display:flex; gap:10px; margin-bottom: 5px;">
+                    <button class="secondary" onclick="App.setSessionToken()" title="Keep in memory for this tab only">Use for Session Only</button>
+                </div>
+                
+                <div id="sessionTokenStatus" style="font-size: 11px; color: var(--success); display: none; margin-top: 8px;">
+                    ✓ Session token active (survives refresh).
+                </div>
+            </div>
+
             <label>Artifact Whitelist</label>
             <div class="ext-grid" id="extGroup"></div>
 
             <label>Master AI Prompt</label>
             <textarea id="aiPrompt" style="height: 350px;"></textarea>
-
    
             <button id="packBtn" onclick="App.compileContext()">📦 1. COMPILE FULL CONTEXT</button>
 

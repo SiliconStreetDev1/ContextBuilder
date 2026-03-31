@@ -1,26 +1,79 @@
+/**
+ * SAP Context Builder - Backend Server
+ * * This server handles local file system access, communication with GitHub (via ContextPacker),
+ * and serves the frontend UI. It is strictly configured for local execution.
+ */
+
+// 1. Initialize Environment Variables from the .env file
+require('dotenv').config(); 
+
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const clipboardy = require('clipboardy');
 
-// Internal modules
-const SecurityManager = require('./src/security');
+// Internal module to handle the logic of traversing directories and fetching GitHub content
 const ContextPacker = require('./src/contextPacker');
+
+/**
+ * SECURITY GUARDRAIL: enforceLocalExecutionOnly
+ * Checks for common cloud environment variables and the NODE_ENV flag.
+ * If detected, the process terminates to prevent unauthorized remote hosting.
+ */
+function enforceLocalExecutionOnly() {
+    const cloudEnvVars = [
+        'DYNO', 'AWS_REGION', 'AWS_EXECUTION_ENV', 'VERCEL', 'RENDER',
+        'FLY_REGION', 'RAILWAY_ENVIRONMENT', 'KUBERNETES_SERVICE_HOST',
+        'GCP_PROJECT', 'GOOGLE_CLOUD_PROJECT', 'AZURE_FUNCTIONS_ENVIRONMENT', 'CODESPACES'
+    ];
+
+    // Check if any known cloud-provider environment variables are present
+    const isCloudEnv = cloudEnvVars.some(envVar => process.env[envVar] !== undefined);
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    if (isCloudEnv || isProduction) {
+        console.error("Cloud environment detected. Local execution only. Exiting.");
+        process.exit(1);
+    }
+}
+
+// Execute the guardrail immediately on startup
+enforceLocalExecutionOnly();
 
 const app = express();
 
-// Middleware configuration
-// INCREASED LIMITS: 50mb capacity for large enterprise requests
+/**
+ * MIDDLEWARE: IP Filtering
+ * Ensures that only requests coming from the local machine (localhost) are processed.
+ */
+app.use((req, res, next) => {
+    const clientIp = req.ip || req.connection.remoteAddress;
+    const allowedLocalIps = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+
+    if (!allowedLocalIps.includes(clientIp)) {
+        console.warn(`Blocked remote access attempt from IP: ${clientIp}`);
+        return res.status(403).json({
+            error: "403 Forbidden",
+            message: "Local access only."
+        });
+    }
+
+    next();
+});
+
+// Configure Express to handle large payloads (required for packing large repositories)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Serve the frontend assets from the 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// State Management: Hold chunks in server memory to avoid Boomerang payloads
+// Temporary server-side memory to hold the last compiled context
 let serverMemoryChunks = [];
 
-// ==========================================
-// CONFIGURATION API
-// ==========================================
+/**
+ * API: GET /api/config
+ * Retrieves the global configuration (ignore lists, extensions) for the UI.
+ */
 app.get('/api/config', (req, res) => {
     const configPath = path.join(__dirname, 'config.json');
     if (fs.existsSync(configPath)) {
@@ -30,103 +83,65 @@ app.get('/api/config', (req, res) => {
     }
 });
 
-// ==========================================
-// SECURITY API
-// ==========================================
-app.post('/api/credentials', async (req, res) => {
+/**
+ * API: GET /api/prompt
+ * Reads the master system instruction template from a text file.
+ */
+app.get('/api/prompt', async (req, res) => {
     try {
-        const { token } = req.body;
-        await SecurityManager.saveGitHubToken(token);
-        res.json({ success: true, message: "Token stored securely in OS keychain." });
+        const promptPath = path.join(__dirname, 'default-prompt.txt');
+        const content = await fs.promises.readFile(promptPath, 'utf8');
+        res.send(content);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(404).send("Default prompt file not found.");
     }
 });
 
-// ==========================================
-// OS INTEGRATION API (CLIPBOARD)
-// ==========================================
-app.post('/api/copy-os', async (req, res) => {
-    try {
-        if (!serverMemoryChunks || serverMemoryChunks.length === 0) {
-            return res.status(400).json({ error: "No context packed to copy." });
-        }
-        
-        // Join all chunks into a single string
-        const fullPayload = serverMemoryChunks.join('\n\n');
-        
-        // Write directly to the OS clipboard via Node.js
-        await clipboardy.write(fullPayload);
-        
-        res.json({ success: true, message: "Copied directly to OS clipboard!" });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// ==========================================
-// AUTOMATION API (PLAYWRIGHT)
-// ==========================================
-app.post('/api/login', async (req, res) => {
-    try {
-        await ChromeAutomator.openForLogin();
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.post('/api/auto-feed', (req, res) => {
-    try {
-        if (!serverMemoryChunks || serverMemoryChunks.length === 0) {
-            return res.status(400).json({ error: "No context packed in server memory. Please compile first." });
-        }
-        
-        // Fire-and-Forget implementation
-        ChromeAutomator.feedChunks(serverMemoryChunks).catch(err => {
-            console.error("[Background Feed Error]", err);
-        });
-
-        res.json({ success: true, message: "Feeding process handed off to background worker." });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// ==========================================
-// CORE PACKING API
-// ==========================================
+/**
+ * API: POST /api/pack
+ * The core orchestration endpoint. Receives source paths/URLs, compiles the code
+ * based on extensions, and returns the result in XML chunks.
+ */
 app.post('/api/pack', async (req, res) => {
     try {
-        const { sources, extensions, aiPrompt } = req.body;
-        
+        const { sources, extensions, aiPrompt, sessionToken } = req.body;
+
+        // Load configuration to determine character limits and ignore rules
         const configPath = path.join(__dirname, 'config.json');
         const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        
+
         const characterLimit = configData.maxCharsPerChunk || 45000;
         const ignoreDirs = configData.ignoreDirs || [];
         const ignoreFiles = configData.ignoreFiles || [];
-        
-        const gitHubToken = await SecurityManager.getGitHubToken();
-        
+
+        /**
+         * TOKEN LOGIC:
+         * Priority 1: sessionToken (Passed from the browser's volatile storage)
+         * Priority 2: GITHUB_TOKEN (Pulled from the local .env file)
+         */
+        const activeToken = sessionToken || process.env.GITHUB_TOKEN;
+
+        // Call the packer logic to build the XML context
         serverMemoryChunks = await ContextPacker.compile(
-            sources, 
-            extensions, 
-            aiPrompt, 
-            gitHubToken, 
+            sources,
+            extensions,
+            aiPrompt,
+            activeToken,
             characterLimit,
             ignoreDirs,
             ignoreFiles
         );
-        
+
+        // Return the compiled chunks to the frontend
         res.json({ chunks: serverMemoryChunks });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// Initialize server
+// Configure port and start the listener strictly on the local loopback address
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`SAP Context Builder running on http://localhost:${PORT}`);
+
+app.listen(PORT, '127.0.0.1', () => {
+    console.log(`Server running on http://127.0.0.1:${PORT}`);
 });
