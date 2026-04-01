@@ -52,8 +52,8 @@
     {
       "groupName": "Configuration & Data",
       "items": [
-        { "label": "JSON Configs (.json)", "value": ".json", "default": true },
-        { "label": "YAML Configs (.yaml, .yml)", "value": ".yaml,.yml", "default": true },
+        { "label": "JSON Configs (.json)", "value": ".json", "default": false },
+        { "label": "YAML Configs (.yaml, .yml)", "value": ".yaml,.yml", "default": false },
         { "label": "Markdown (.md)", "value": ".md", "default": false }
       ]
     }
