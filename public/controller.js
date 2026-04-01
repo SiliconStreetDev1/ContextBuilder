@@ -84,12 +84,13 @@ class ContextStudioController {
             toast.style.transform = 'translateY(0)';
         });
 
-        // Exit and cleanup after 3 seconds
+        // Exit and cleanup after 3 seconds (extended to 5 for warnings/errors)
+        const timeoutDuration = (type === 'error') ? 5000 : 3000;
         setTimeout(() => {
             toast.style.opacity = '0';
             toast.style.transform = 'translateY(10px)';
             setTimeout(() => toast.remove(), 300);
-        }, 3000);
+        }, timeoutDuration);
     }
 
     /**
@@ -192,7 +193,22 @@ class ContextStudioController {
 
                     group.items.forEach(item => {
                         const lbl = document.createElement('label');
-                        lbl.innerHTML = `<input type="checkbox" value="${item.value}" ${item.default ? 'checked' : ''}> ${item.label}`;
+
+                        // Create the checkbox dynamically to attach event listeners
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.value = item.value;
+                        checkbox.checked = item.default;
+
+                        // Add warning listener for configuration files
+                        checkbox.addEventListener('change', (e) => {
+                            if (e.target.checked && (item.value.includes('.json') || item.value.includes('.yaml') || item.value.includes('.yml'))) {
+                                this.showToast("WARNING: Please ensure no personal data, credentials, or secrets are exposed in your JSON/YAML files.", "error");
+                            }
+                        });
+
+                        lbl.appendChild(checkbox);
+                        lbl.appendChild(document.createTextNode(' ' + item.label));
                         extContainer.appendChild(lbl);
                     });
                 });
@@ -379,7 +395,9 @@ class ContextStudioController {
         // Update Extension Checkboxes
         const checks = document.querySelectorAll('#extGroup input');
         checks.forEach(chk => {
-            chk.checked = data.extensions.some(e => chk.value.includes(e));
+            // Fix: Split the checkbox values to prevent substring matching bugs (e.g., ".json".includes(".js"))
+            const checkboxValues = chk.value.split(',');
+            chk.checked = data.extensions.some(e => checkboxValues.includes(e));
         });
     }
 
