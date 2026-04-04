@@ -78,7 +78,7 @@ class ContextPacker {
      */
     static async _processRemoteRepository(repoUrl, extensions, fileManifest, token, ignoreDirs, ignoreFiles, maxFileSizeBytes, sourcePrefix) {
         // Parse URL to construct the api.github.com endpoint
-        const match = repoUrl.match(/github\.com\/([^\/]+)\/([^\/.]+)/);
+        const match = repoUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
         if (!match) {
             throw new Error(`[Security] Invalid GitHub URL format: ${repoUrl}`);
         }
