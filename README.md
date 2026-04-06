@@ -50,7 +50,7 @@ The default configuration is **designed to ignore** requests from external netwo
 2. Install dependencies by running: `npm install`
 3. Start the local server by running: `npm start`
 4. Navigate to `http://localhost:3000` in your web browser. 
-5. Add Git Repo Url or Local Path.
+5. Add Git Repo Url or Local Path. Local Path must have a .GIT folder else it will be ignored.
 6. Click **📦 1. COMPILE FULL CONTEXT**.
 7. Click **Download XML**.
 8. Open your preferred Web LLM (Gemini, ChatGPT, Claude).
