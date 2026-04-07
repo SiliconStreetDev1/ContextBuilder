@@ -88,7 +88,7 @@ If you are working with proprietary enterprise code, it is highly recommended to
 - **ABAP Standards:** Includes a system prompt instructing the LLM to output clean, modular, and well-commented ABAP, explicitly prohibiting Hungarian notation (e.g., no `LV_` variables).
 - **OO Syntax Rules:** Enforces standard multi-line global class definitions (requiring `CLASS zcl_classname DEFINITION PUBLIC FINAL CREATE PUBLIC .`) to prevent syntax errors.
 - **Profile Management:** Saves project configurations (sources, extensions, prompts) to Local Storage.
-- **Secure GitHub Integration:** Retrieves private repositories using a Personal Access Token (PAT).
+- **GitHub Integration:** Retrieves private repositories using a Personal Access Token (PAT). Please see Legal Disclaimer before use and <b> Credential Management & Responsibility </b>  section in this readme.
 
 ### 🌐 Distributed Development Unification
 
